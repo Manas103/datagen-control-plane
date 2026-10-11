@@ -1,0 +1,22 @@
+[==========] Running 16 tests from 3 test suites.
+[----------] 4 tests from Dag
+[  PASSED  ] Dag.DeterministicForSameRequestId
+[  PASSED  ] Dag.EveryDepIsAPriorJobInTheSameDag
+[  PASSED  ] Dag.ExactlyThreeTemplatesObserved
+[  PASSED  ] Dag.LinearTemplateHasThreeJobsNoFanOut
+[----------] 5 tests from FairShare
+[  PASSED  ] FairShare.PicksLowestVirtualTimeTenant
+[  PASSED  ] FairShare.EqualPriorityConvergesToEqualShareOverManyRounds
+[  PASSED  ] FairShare.HigherPriorityTenantGetsMoreShareUnderContention
+[  PASSED  ] FairShare.EmptyReadySetReturnsNegativeOne
+[  PASSED  ] FairShare.TenantWithZeroCountIsIgnored
+[----------] 7 tests from Store
+[  PASSED  ] Store.SubmitIsIdempotentOnRequestId
+[  PASSED  ] Store.FullDrainOfASingleLinearRequest
+[  PASSED  ] Store.ExecuteAndCommitJobFiresWebhookExactlyOnceUnderDoubleInvocation
+[  PASSED  ] Store.RecoverStaleClaimsResetsUnfinishedClaimToReady
+[  PASSED  ] Store.RecoverStaleClaimsResolvesDirectlyWhenWebhookAlreadyFired
+[  PASSED  ] Store.SweepReadinessPromotesAJobWhoseSiblingUpdatesWereNeverCrossChecked
+[  PASSED  ] Store.StateDigestIsStableAcrossTwoIdenticallyDrivenRuns
+[==========] 16 tests from 3 test suites ran.
+[  PASSED  ] 16 tests.

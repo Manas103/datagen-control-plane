@@ -1,0 +1,19 @@
+schema reset
+initial coordinator pid=845838
+kills injected: 20, final coordinator pid=846443
+submitted=3000 admitted=1034 wall_seconds=4.02132
+admission_latency_ms p50=0.004338 p95=2.4325 p99=15.0896 max=1015.39
+draining remaining backlog...
+drained after 0.00136613s
+--- duplicate check (/tmp/crash_inject_side_effects.log) ---
+duplicate_keys=0
+total_side_effect_lines=4517
+unique_keys=4517
+
+20 of 20 injected SIGKILLs against the coordinator process, each followed
+by a real restart (new epoch, RecoverStaleClaims run on startup), produced
+0 duplicate (request_id, job_id) side-effect keys out of 4,517 completed
+job executions. 1,034 of 3,000 submitted requests were admitted; the rest
+failed admission because the coordinator was down at that exact moment
+(expected: no retry logic in this harness's client), not a correctness
+issue.

@@ -1,0 +1,12 @@
+build/
+out/
+*.o
+*.obj
+*.exe
+__pycache__/
+venv/
+.pytest_cache/
+*.log
+# regenerate with tools/gen_requests.py (see README); large synthetic CSVs
+# are not tracked
+docs/*.csv

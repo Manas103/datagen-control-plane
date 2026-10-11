@@ -1,0 +1,28 @@
+Run 1 (clean):
+schema reset
+[canonical] coordinator pid=510349
+submitted=50000 admitted=50000 wall_seconds=47.1602
+admission_latency_ms p50=1.62626 p95=20.933 p99=27.3499 max=67.2963
+[canonical] draining...
+drained after 1066.68s
+[canonical] digest=6c840d497b19cc584af0b3d85ffe0176d5317d2410cd92cf6ac0b0efce143032
+
+(an unrelated unit-test run against the same live database interrupted
+the noisy-stream run here; disclosed in README Findings)
+
+Run 2, noisy stream resumed to completion:
+drained after 147.952s
+digest=3721c76daac795feae1628e513c4be3a8d2cb6bff6ae2cc65af6cea30031bf68
+
+Run 3, canonical stream re-run from a fresh database (no interference):
+schema reset
+[canonical] coordinator pid=701271
+submitted=50000 admitted=50000 wall_seconds=46.5423
+admission_latency_ms p50=1.5658 p95=20.7949 p99=26.7682 max=62.5759
+[canonical] draining...
+drained after 1294.87s
+[canonical] digest=3721c76daac795feae1628e513c4be3a8d2cb6bff6ae2cc65af6cea30031bf68
+
+Result: run 2 (noisy, 5%-duplicated + reordered) and run 3 (canonical,
+re-run) agree exactly. Run 1 (canonical, first run) disagrees with run 3
+despite byte-identical input and binary. See README Findings.
