@@ -1,0 +1,8 @@
+schema reset
+enqueued 6000 pending assignments
+initial fleet_coordinator pid=9017
+kills injected: 20
+draining any remaining backlog to completion...
+--- final counts ---
+pending=0 assigned=6000 distinct_assigned=6000
+requested=6000

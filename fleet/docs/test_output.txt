@@ -1,0 +1,36 @@
+Running main() from ./googletest/src/gtest_main.cc
+[==========] Running 12 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 3 tests from TaskState
+[ RUN      ] TaskState.LegalTransitionsFollowTheDocumentedGraph
+[       OK ] TaskState.LegalTransitionsFollowTheDocumentedGraph (0 ms)
+[ RUN      ] TaskState.IllegalTransitionsAreRejected
+[       OK ] TaskState.IllegalTransitionsAreRejected (0 ms)
+[ RUN      ] TaskState.ToStringFromStringRoundTrip
+[       OK ] TaskState.ToStringFromStringRoundTrip (0 ms)
+[----------] 3 tests from TaskState (0 ms total)
+
+[----------] 9 tests from FleetStore
+[ RUN      ] FleetStore.AssignTaskIsIdempotentOnVehicleAndTaskId
+[       OK ] FleetStore.AssignTaskIsIdempotentOnVehicleAndTaskId (44 ms)
+[ RUN      ] FleetStore.AssignTaskDistinguishesByBothVehicleAndTask
+[       OK ] FleetStore.AssignTaskDistinguishesByBothVehicleAndTask (37 ms)
+[ RUN      ] FleetStore.RecordTransitionRejectsAnIllegalMove
+[       OK ] FleetStore.RecordTransitionRejectsAnIllegalMove (43 ms)
+[ RUN      ] FleetStore.DrainPendingAssignsEveryEnqueuedTaskExactlyOnce
+[       OK ] FleetStore.DrainPendingAssignsEveryEnqueuedTaskExactlyOnce (213 ms)
+[ RUN      ] FleetStore.DrainPendingIsSafeToRerunOverAlreadyAssignedRows
+[       OK ] FleetStore.DrainPendingIsSafeToRerunOverAlreadyAssignedRows (40 ms)
+[ RUN      ] FleetStore.FortySeededTelemetryDivergencesAllReconcileToTheSaferState
+[       OK ] FleetStore.FortySeededTelemetryDivergencesAllReconcileToTheSaferState (193 ms)
+[ RUN      ] FleetStore.ReconciliationNeverMovesTowardTheLessSafeState
+[       OK ] FleetStore.ReconciliationNeverMovesTowardTheLessSafeState (38 ms)
+[ RUN      ] FleetStore.AgreeingTelemetryIsLoggedButNeverChangesState
+[       OK ] FleetStore.AgreeingTelemetryIsLoggedButNeverChangesState (35 ms)
+[ RUN      ] FleetStore.ReconcilingAnUnknownTaskReturnsNullopt
+[       OK ] FleetStore.ReconcilingAnUnknownTaskReturnsNullopt (34 ms)
+[----------] 9 tests from FleetStore (682 ms total)
+
+[----------] Global test environment tear-down
+[==========] 12 tests from 2 test suites ran. (682 ms total)
+[  PASSED  ] 12 tests.

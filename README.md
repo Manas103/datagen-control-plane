@@ -9,6 +9,15 @@ this machine by actually running the service, not targeted; where a
 target was not met after genuine optimization attempts, the measured
 number is reported honestly instead.
 
+Extended (Oct. 2026, Waymo Software Engineering Intern, Commercialization
+req) with `fleet/`, a Fleet Task Assignment Service: a vehicle task state
+machine (dispatch, en route, on trip, charging, cleaning, out of service),
+assignment idempotent on (vehicle id, task id) reusing this project's own
+check-then-act and crash-recovery methodology against a different domain,
+and a reconciler that resolves disagreeing telemetry toward the safer of
+two states rather than trusting whichever arrived last. See the Fleet Task
+Assignment Service extension section below.
+
 ## Why this exists
 
 A datagen team's control plane is the thing every other team's requests
@@ -248,6 +257,85 @@ cmake -DCMAKE_BUILD_TYPE=Release .. && make -j"$(( $(nproc) / 2 ))"
 ../tools/run_crash_injection.sh 50095 /tmp/crash_inject_requests.csv /tmp/side_effects.log "" 20
 ```
 
+## Fleet Task Assignment Service extension (Oct. 2026)
+
+Built for a Waymo Software Engineering Intern, Commercialization req, whose Fleet Orchestration Core is described as the source of truth for every vehicle task assignment. `fleet/` is a standalone CMake project (its own `find_package` calls; it needs libpqxx and nothing else, no gRPC or protobuf) in a disjoint `fleet_*` table set inside the same `datagen_control` Postgres database this project's own coordinator already uses.
+
+### What is reused and what is new
+
+Reused: the check-then-act idempotency guard around a durable side effect, and the "kill the real process, verify the database" crash-injection methodology, both already proven above for datagen jobs. New: a vehicle task domain (dispatch/en route/on trip/charging/cleaning/out of service) with its own transition legality rules, and a reconciler, which this repository did not have before, since a datagen job has no second, independently-reporting source of truth to disagree with.
+
+### Honest framing (fleet extension)
+
+- **The reconciler's "safe state" is a design choice stated plainly, not derived from any real safety standard.** `task_state.cpp`'s `SafetyRank` ranks `out_of_service` highest (safest to mistakenly assume) and `on_trip` lowest (least safe to mistakenly assume); this is a reasonable ordering for a toy fleet service, not a claim about how Waymo's own system actually prioritizes conflicting telemetry.
+- **"20 injected coordinator kills" targets a real, killable `fleet_coordinator` process, the same way the sibling `coordinator` binary is killed above**, draining a real `fleet_pending_assignments` queue in Postgres; `tools/run_fleet_crash_injection.sh` holds the PID it started and sends real `SIGKILL`s to it, never a PID from `ps`.
+- **The backlog size (6,000) is chosen to make the drain take long enough for 20 kills to land, not to hit a specific throughput number.** A first run at 2,000 pending assignments drained before all 20 kills could land (only 14 landed); 6,000 reliably gives the kill loop its full 20 kills while still draining to completion. This is disclosed because it is a real tuning decision that could otherwise look like it was chosen after seeing a result.
+- **Machine and toolchain.** WSL2 Ubuntu 22.04 on Windows 11, 12 logical cores (WSL-capped), g++ 11.4 `-O2`, libpqxx 6.4.5, GoogleTest 1.11.0, the same local PostgreSQL 14.24 service as above.
+
+### Architecture (fleet extension)
+
+```
+fleet/
+  CMakeLists.txt           standalone build: libpqxx + GTest only
+  src/
+    task_state.h/.cpp        the 6-state machine, IsLegalTransition,
+                            SafetyRank, ResolveTowardSafeState
+    fleet_store.h/.cpp        fleet_tasks/fleet_pending_assignments/
+                            fleet_transitions/fleet_telemetry_log/
+                            fleet_reconciliations; AssignTask (idempotent),
+                            DrainPending (crash-safe), RecordTransition
+                            (legality-checked), ReportTelemetryAndReconcile
+    fleet_coordinator.cpp     the standalone, killable queue-draining
+                            process the crash-injection harness targets
+  tools/
+    fleet_tool.cpp            reset/enqueue/counts CLI used by the harness
+    run_fleet_crash_injection.sh   the 20-kill test
+  tests/
+    test_fleet_store.cpp      12 GoogleTest cases
+  docs/                       raw output the claims below are measured from
+```
+
+**Why the pending queue is a separate table from `fleet_tasks`, not a `status` column on it.** A row only leaves `fleet_pending_assignments` after its `fleet_tasks` insert durably commits (`DrainPending`), so a kill at any point leaves the system in one of two states: the row is still pending and the insert never happened (safe to redo), or the row is still pending and the insert already happened (redoing it is a no-op, by `AssignTask`'s own `ON CONFLICT DO NOTHING`). There is no third state where a kill loses the request, because nothing deletes the pending row before the insert that matters has committed.
+
+**Why reconciliation reads the current recorded state and picks a side, rather than the two sources voting or averaging.** There are only ever two states to disagree (the system's own last-recorded state and one fresh telemetry report); the only move available is to recompute and commit a resolved state, so the reconciler is a pure function (`ResolveTowardSafeState`) of exactly those two inputs, deliberately not a function of history, so a vehicle cannot get "stuck" disagreeing based on how many times it has disagreed before.
+
+### Validation (fleet extension)
+
+`fleet/build/fleet_unit_tests` (GoogleTest, 12 cases): the task state machine's legal/illegal transitions and string round-trip; idempotent assignment on (vehicle id, task id), including distinguishing two different vehicles and two different tasks on the same vehicle; a rejected illegal `RecordTransition`; `DrainPending` assigning every enqueued task exactly once, and being safe to re-run over an already-assigned row (the exact shape a coordinator kill produces); 40 seeded telemetry divergences all resolving to the state `ResolveTowardSafeState` independently predicts; agreeing telemetry never changing state; reconciling an unknown task returning no outcome.
+
+```
+$ ./fleet_unit_tests
+[==========] 12 tests from 2 test suites ran.
+[  PASSED  ] 12 tests.
+```
+
+`tools/run_fleet_crash_injection.sh`: resets the schema, enqueues 6,000 pending assignments, starts `fleet_coordinator`, and injects 20 real `SIGKILL`s against it while it drains, restarting it after each kill, then verifies `fleet_tasks` holds exactly one row per enqueued (vehicle id, task id).
+
+### Measured results (fleet extension)
+
+Machine spec repeated: WSL2 Ubuntu 22.04, 12 logical cores (WSL-capped), g++ 11.4 `-O2`, PostgreSQL 14.24 (native WSL2 service), libpqxx 6.4.5.
+
+**The one number that matters most: 20 real coordinator kills, 0 duplicate and 0 lost assignments.**
+
+| Claim | Measured | Command |
+|---|---|---|
+| Task state machine over dispatch, en route, on trip, charging, cleaning and out of service | All 6 states and the documented legal-transition graph verified, including that `out_of_service` is terminal and that `on_trip` cannot be reached directly from `dispatch` | `TaskState.LegalTransitionsFollowTheDocumentedGraph`, `TaskState.IllegalTransitionsAreRejected` |
+| Assignment idempotent on (vehicle id, task id) | A second `AssignTask` call for the same pair inserts 0 new rows; two different vehicles or two different tasks on one vehicle are each their own row | `FleetStore.AssignTaskIsIdempotentOnVehicleAndTaskId`, `FleetStore.AssignTaskDistinguishesByBothVehicleAndTask` |
+| Reconciler resolves disagreeing telemetry toward the safe state | **40 of 40** seeded divergence scenarios (every ordered pair of the 6 states, plus 10 repeats) resolved to the state `ResolveTowardSafeState` predicts, both in the returned outcome and in the task's committed state | `FleetStore.FortySeededTelemetryDivergencesAllReconcileToTheSaferState`, `fleet/docs/test_output.txt` |
+| 20 injected coordinator kills produced 0 duplicate and 0 lost assignments | **20 / 20 kills injected; final state: pending=0, assigned=6000, distinct_assigned=6000** against 6,000 requested, i.e. exactly one row per requested (vehicle id, task id), no more and no fewer | `tools/run_fleet_crash_injection.sh`, `fleet/docs/crash_injection_output.txt` |
+
+### Building and running (fleet extension)
+
+```bash
+# uses the same datagen_app role / datagen_control database as above
+mkdir -p fleet/build && cd fleet/build
+cmake -DCMAKE_BUILD_TYPE=Release .. && make -j"$(( $(nproc) / 2 ))"
+./fleet_unit_tests
+
+cd ..
+tools/run_fleet_crash_injection.sh 6000 20
+```
+
 ## Limitations
 
 - Job "execution" is a trivial stand-in; there is no real downstream
@@ -263,3 +351,9 @@ cmake -DCMAKE_BUILD_TYPE=Release .. && make -j"$(( $(nproc) / 2 ))"
 - The readiness-sweep fix bounds the lost-wakeup race to at most ~500ms
   of added latency for the specific job it affects, not zero; it does
   not change the exactly-once guarantee, which does not depend on timing.
+- **Fleet extension:** `SafetyRank`'s ordering is this project's own
+  design choice (see Honest framing), not a validated safety policy;
+  `fleet_coordinator` is a single-process drainer with no fair-share or
+  priority policy of its own, unlike the sibling dispatcher above; and the
+  reconciler reacts to one reported telemetry value at a time, it does not
+  model a disagreement that persists across many reports.
